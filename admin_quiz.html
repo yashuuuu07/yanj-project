@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Quiz Manager - Admin - EmotionTrack AI{% endblock %}
+
+{% block content %}
+<div class="space-y-12">
+
+    <!-- Header -->
+    <div class="flex flex-wrap justify-between items-center gap-4">
+        <div>
+            <h2 class="text-4xl font-bold">Quiz Manager</h2>
+            <p class="text-gray-400 mt-2">
+                {% if selected_course %}
+                    Managing questions for: <span class="text-purple-400 font-semibold">{{ selected_course.title }}</span>
+                {% else %}
+                    All quiz questions across all courses
+                {% endif %}
+            </p>
+        </div>
+        <div class="flex space-x-4">
+            <a href="{{ url_for('admin') }}" class="px-5 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-semibold transition">
+                ← Back to Admin
+            </a>
+            <button onclick="document.getElementById('addQuestionModal').classList.toggle('hidden')"
+                class="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-xl font-bold transition">
+                + Add Question
+            </button>
+        </div>
+    </div>
+
+    <!-- Filter by Course -->
+    <div class="glass p-5 rounded-2xl flex flex-wrap gap-3 items-center">
+        <span class="text-gray-400 text-sm font-semibold uppercase tracking-widest">Filter by Course:</span>
+        <a href="{{ url_for('admin_quiz') }}"
+           class="px-4 py-2 rounded-lg text-sm font-medium transition {% if not selected_course %}bg-purple-600 text-white{% else %}bg-white/10 hover:bg-white/20{% endif %}">
+            All
+        </a>
+        {% for course in courses %}
+        <a href="{{ url_for('admin_quiz') }}?course_id={{ course.id }}"
+           class="px-4 py-2 rounded-lg text-sm font-medium transition {% if selected_course and selected_course.id == course.id %}bg-purple-600 text-white{% else %}bg-white/10 hover:bg-white/20{% endif %}">
+            {{ course.title }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- Questions Table -->
+    <div class="glass rounded-3xl overflow-hidden shadow-2xl">
+        <table class="w-full text-left">
+            <thead class="bg-white/5 text-gray-400 uppercase text-xs tracking-wider">
+                <tr>
+                    <th class="p-5">Subject</th>
+                    <th class="p-5">Question</th>
+                    <th class="p-5 text-center">Options</th>
+                    <th class="p-5 text-center">Answer</th>
+                    <th class="p-5 text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-white/10">
+                {% if questions %}
+                    {% for q in questions %}
+                    <tr class="hover:bg-white/5 transition group">
+                        <td class="p-5">
+                            <span class="px-3 py-1 bg-blue-500/10 text-blue-400 text-xs rounded-full border border-blue-500/20">
+                                {{ q.subject }}
+                            </span>
+                        </td>
+                        <td class="p-5 max-w-xs">
+                            <p class="text-sm leading-relaxed">{{ q.question }}</p>
+                        </td>
+                        <td class="p-5">
+                            <div class="text-xs text-gray-400 space-y-1">
+                                <div><span class="text-white font-bold mr-1">A.</span>{{ q.option_a }}</div>
+                                <div><span class="text-white font-bold mr-1">B.</span>{{ q.option_b }}</div>
+                                <div><span class="text-white font-bold mr-1">C.</span>{{ q.option_c }}</div>
+                                <div><span class="text-white font-bold mr-1">D.</span>{{ q.option_d }}</div>
+                            </div>
+                        </td>
+                        <td class="p-5 text-center">
+                            <span class="w-10 h-10 flex items-center justify-center mx-auto rounded-full bg-green-500/20 text-green-400 font-bold border border-green-500/30 text-lg">
+                                {{ q.correct_answer }}
+                            </span>
+                        </td>
+                        <td class="p-5 text-right">
+                            <form action="{{ url_for('delete_quiz_question', question_id=q.id) }}" method="POST" class="inline">
+                                {% if selected_course %}
+                                <input type="hidden" name="course_id" value="{{ selected_course.id }}">
+                                {% endif %}
+                                <button type="submit"
+                                    class="text-red-400 hover:text-red-300 text-sm font-semibold transition"
+                                    onclick="return confirm('Delete this question?')">
+                                    Delete
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="5" class="p-12 text-center text-gray-500">
+                        <div class="text-4xl mb-3">📝</div>
+                        <p>No questions yet. Click <strong class="text-white">+ Add Question</strong> to get started.</p>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Stats row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div class="glass rounded-2xl p-6 text-center">
+            <p class="text-3xl font-bold text-blue-400">{{ questions|length }}</p>
+            <p class="text-gray-400 text-sm mt-1">Total Questions</p>
+        </div>
+        <div class="glass rounded-2xl p-6 text-center">
+            <p class="text-3xl font-bold text-purple-400">{{ courses|length }}</p>
+            <p class="text-gray-400 text-sm mt-1">Courses</p>
+        </div>
+        <div class="glass rounded-2xl p-6 text-center">
+            <p class="text-3xl font-bold text-green-400">{{ subjects|length }}</p>
+            <p class="text-gray-400 text-sm mt-1">Subjects</p>
+        </div>
+        <div class="glass rounded-2xl p-6 text-center">
+            <p class="text-3xl font-bold text-yellow-400">{{ attempt_count }}</p>
+            <p class="text-gray-400 text-sm mt-1">Total Attempts</p>
+        </div>
+    </div>
+
+</div>
+
+<!-- ===== Add Question Modal ===== -->
+<div id="addQuestionModal"
+    class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div class="glass p-8 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <h3 class="text-2xl font-bold mb-6">Add New Quiz Question</h3>
+        <form action="{{ url_for('create_quiz_question') }}" method="POST" class="space-y-5">
+
+            <!-- Course selector -->
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Link to Course <span class="text-gray-600">(optional)</span></label>
+                <select name="course_id" class="w-full bg-white/5 border border-white/10 p-3 rounded-lg text-white">
+                    <option value="">-- No specific course --</option>
+                    {% for course in courses %}
+                    <option value="{{ course.id }}" {% if selected_course and selected_course.id == course.id %}selected{% endif %}>
+                        {{ course.title }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Subject -->
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Subject / Topic <span class="text-red-400">*</span></label>
+                <input type="text" name="subject" required placeholder="e.g. Python, JavaScript, SQL..."
+                    class="w-full bg-white/5 border border-white/10 p-3 rounded-lg" list="subject-suggestions">
+                <datalist id="subject-suggestions">
+                    <option value="Python">
+                    <option value="JavaScript">
+                    <option value="Data Structures">
+                    <option value="SQL">
+                    <option value="Web Development">
+                    <option value="Machine Learning">
+                    <option value="Algorithms">
+                </datalist>
+            </div>
+
+            <!-- Question -->
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Question <span class="text-red-400">*</span></label>
+                <textarea name="question" required rows="3" placeholder="Enter the quiz question..."
+                    class="w-full bg-white/5 border border-white/10 p-3 rounded-lg resize-none"></textarea>
+            </div>
+
+            <!-- Options A - D -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {% for letter in ['A', 'B', 'C', 'D'] %}
+                <div>
+                    <label class="block text-sm text-gray-400 mb-1">Option {{ letter }} <span class="text-red-400">*</span></label>
+                    <div class="flex items-center space-x-2">
+                        <span class="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full bg-white/10 font-bold text-blue-400">{{ letter }}</span>
+                        <input type="text" name="option_{{ letter | lower }}" required
+                            placeholder="Option {{ letter }}..."
+                            class="flex-1 bg-white/5 border border-white/10 p-3 rounded-lg">
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Correct Answer -->
+            <div>
+                <label class="block text-sm text-gray-400 mb-2">Correct Answer <span class="text-red-400">*</span></label>
+                <div class="grid grid-cols-4 gap-3">
+                    {% for letter in ['A', 'B', 'C', 'D'] %}
+                    <label class="flex items-center justify-center p-3 glass rounded-xl border border-white/10 cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-500/10 transition">
+                        <input type="radio" name="correct_answer" value="{{ letter }}" required class="hidden">
+                        <span class="font-bold text-lg">{{ letter }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex space-x-4 pt-2">
+                <button type="submit" class="flex-1 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-bold transition">
+                    Add Question
+                </button>
+                <button type="button"
+                    onclick="document.getElementById('addQuestionModal').classList.add('hidden')"
+                    class="flex-1 py-3 bg-white/10 hover:bg-white/20 rounded-lg font-bold transition">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
