@@ -1,0 +1,590 @@
+{% extends "base.html" %}
+{% block title %}{{ course.title }} — EmotionTrack AI{% endblock %}
+
+{% block content %}
+<style>
+    @keyframes fadeUp {
+        from { opacity:0; transform:translateY(20px); }
+        to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes fadeSlideIn {
+        from { opacity:0; transform:translateY(24px); }
+        to   { opacity:1; transform:translateY(0); }
+    }
+    @keyframes pulseGlow {
+        0%,100% { box-shadow:0 0 0 0 rgba(139,92,246,0); }
+        50%      { box-shadow:0 0 0 8px rgba(139,92,246,0.15); }
+    }
+    .mode-panel  { animation: fadeUp 0.4s cubic-bezier(.22,.68,0,1.2) both; }
+    .q-card      { animation: fadeSlideIn 0.4s cubic-bezier(.22,.68,0,1.2) both; }
+
+    /* Toggle pill */
+    .toggle-pill {
+        position: relative;
+        display: inline-flex;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 9999px;
+        padding: 4px;
+    }
+    .toggle-pill button {
+        position: relative; z-index:1;
+        padding: 8px 28px;
+        border-radius: 9999px;
+        font-size: 0.9rem; font-weight:700;
+        transition: color 0.3s;
+        color: #9ca3af;
+    }
+    .toggle-pill button.active { color:#fff; }
+    .toggle-pill .slider {
+        position:absolute; top:4px; bottom:4px;
+        border-radius:9999px;
+        background: linear-gradient(135deg, #7c3aed, #2563eb);
+        transition: all 0.35s cubic-bezier(.22,.68,0,1.2);
+        box-shadow: 0 4px 12px rgba(124,58,237,0.4);
+    }
+
+    /* Option buttons */
+    .opt-btn {
+        transition: all 0.18s cubic-bezier(.22,.68,0,1.2);
+        position:relative; overflow:hidden;
+    }
+    .opt-btn::before {
+        content:''; position:absolute; inset:0;
+        background:linear-gradient(135deg,rgba(124,58,237,0.12),rgba(37,99,235,0.12));
+        opacity:0; transition:opacity 0.2s;
+    }
+    .opt-btn:not(:disabled):hover::before { opacity:1; }
+    .opt-btn:not(:disabled):hover { transform:translateX(5px); border-color:rgba(124,58,237,0.5)!important; }
+    .opt-btn.correct { border-color:#22c55e!important; background:rgba(34,197,94,0.1)!important; }
+    .opt-btn.wrong   { border-color:#ef4444!important; background:rgba(239,68,68,0.1)!important; }
+    .opt-btn.correct .lbadge { background:#22c55e; color:#fff; }
+    .opt-btn.wrong   .lbadge { background:#ef4444; color:#fff; }
+
+    .webcam-wrap { box-shadow:0 0 0 2px rgba(139,92,246,0.3),0 0 28px rgba(139,92,246,0.07); }
+
+    /* Score ring */
+    .score-ring {
+        stroke-dasharray:251.2; stroke-dashoffset:251.2;
+        transition:stroke-dashoffset 1.2s cubic-bezier(.22,.68,0,1.2);
+    }
+</style>
+
+<!-- ── Page Header ─────────────────────────────────────── -->
+<div class="flex items-center justify-between mb-8 flex-wrap gap-4">
+    <div class="flex items-center gap-4">
+        <a href="{{ url_for('dashboard') }}"
+           class="w-10 h-10 flex items-center justify-center glass rounded-xl hover:bg-white/10 transition text-gray-400 hover:text-white text-xl">
+            ←
+        </a>
+        <div>
+            <p class="text-xs text-gray-500 uppercase tracking-widest mb-0.5">{{ course.description[:55] }}…</p>
+            <h1 class="text-2xl font-bold leading-tight">{{ course.title }}</h1>
+        </div>
+    </div>
+
+    <!-- ── Mode Toggle ── -->
+    <div class="toggle-pill" id="modePill">
+        <div class="slider" id="pillSlider"></div>
+        <button id="btnCourse" class="active" onclick="switchMode('course')">▶ &nbsp;Course</button>
+        <button id="btnQuiz"            onclick="switchMode('quiz')">🧠 &nbsp;Quiz</button>
+    </div>
+</div>
+
+<!-- ── Main Grid ───────────────────────────────────────── -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+    <!-- ══ LEFT CONTENT (col-span-2) ══ -->
+    <div class="lg:col-span-2">
+
+        <!-- ═══ COURSE MODE ═══ -->
+        <div id="coursePanel" class="mode-panel space-y-6">
+            <!-- Video -->
+            <div class="aspect-video glass rounded-3xl overflow-hidden shadow-2xl border border-white/10">
+                <iframe id="courseVideo" class="w-full h-full"
+                    src="https://www.youtube.com/embed/{{ video_id }}?enablejsapi=1"
+                    title="{{ course.title }}"
+                    frameborder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowfullscreen></iframe>
+            </div>
+            <!-- Info -->
+            <div class="glass p-7 rounded-3xl border border-white/10">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="px-3 py-1 bg-purple-500/15 text-purple-300 text-xs rounded-full border border-purple-500/25 font-semibold">Course Content</span>
+                </div>
+                <h2 class="text-2xl font-bold mb-2">{{ course.title }}</h2>
+                <p class="text-gray-400 leading-relaxed">{{ course.description }}</p>
+            </div>
+        </div>
+
+        <!-- ═══ QUIZ MODE ═══ -->
+        <div id="quizPanel" class="mode-panel hidden space-y-6">
+
+            {% if questions %}
+            <!-- Progress bar -->
+            <div class="glass rounded-2xl p-5 border border-white/10 flex items-center gap-5">
+                <div class="flex-1">
+                    <div class="flex justify-between text-xs text-gray-400 mb-2">
+                        <span>Question <span class="text-white font-bold" id="qNum">1</span>
+                              of <span class="text-white font-bold">{{ questions|length }}</span></span>
+                        <span class="text-purple-400 font-bold" id="qPct">0%</span>
+                    </div>
+                    <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div id="qBar" class="h-full rounded-full bg-gradient-to-r from-purple-500 to-blue-500 transition-all duration-700" style="width:0%"></div>
+                    </div>
+                </div>
+                <div class="text-right flex-shrink-0">
+                    <p class="text-2xl font-bold text-green-400" id="qScore">0</p>
+                    <p class="text-xs text-gray-500">correct</p>
+                </div>
+            </div>
+
+            <!-- Question card (active) -->
+            <div id="questionWrap">
+                <div id="qCard" class="q-card glass rounded-3xl p-8 border border-white/10 shadow-2xl">
+                    <div class="flex items-start gap-4 mb-8">
+                        <div class="w-12 h-12 flex-shrink-0 rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center font-black text-lg shadow-lg">
+                            <span id="qIndex">1</span>
+                        </div>
+                        <div class="flex-1 pt-1">
+                            <p class="text-xs text-purple-400 uppercase tracking-widest mb-2" id="qSubj">{{ questions[0].subject }}</p>
+                            <p class="text-xl font-semibold leading-relaxed" id="qText">{{ questions[0].question }}</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3" id="optsWrap">
+                        {% for letter, key in [('A','option_a'),('B','option_b'),('C','option_c'),('D','option_d')] %}
+                        <button class="opt-btn quiz-opt w-full flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/10 text-left"
+                                data-opt="{{ letter }}" onclick="pick('{{ letter }}')">
+                            <span class="lbadge w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/10 font-bold text-sm text-purple-300">{{ letter }}</span>
+                            <span class="text-sm leading-relaxed">{{ questions[0][key] }}</span>
+                        </button>
+                        {% endfor %}
+                    </div>
+
+                    <div id="qFeedback"
+                         class="mt-6 min-h-[44px] flex items-center justify-center rounded-2xl px-6 py-3 text-base font-semibold opacity-0 transition-all duration-300"></div>
+                </div>
+            </div>
+
+            <!-- Final score screen (hidden initially) -->
+            <div id="finalWrap" class="hidden q-card">
+                <div class="glass rounded-3xl p-12 text-center border border-white/10 shadow-2xl">
+                    <div id="finalEmoji" class="text-8xl mb-5">🎯</div>
+                    <h2 class="text-3xl font-bold mb-1">Quiz Complete!</h2>
+                    <p class="text-gray-400 mb-8">You've finished the quiz for this course.</p>
+                    <div class="relative w-36 h-36 mx-auto mb-8">
+                        <svg class="w-full h-full -rotate-90" viewBox="0 0 90 90">
+                            <circle cx="45" cy="45" r="40" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="6"/>
+                            <circle id="ring" cx="45" cy="45" r="40" fill="none"
+                                stroke="url(#rg)" stroke-width="6" stroke-linecap="round" class="score-ring"/>
+                            <defs>
+                                <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#a855f7"/>
+                                    <stop offset="100%" stop-color="#3b82f6"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center">
+                            <p class="text-3xl font-black" id="finalPct">0%</p>
+                            <p class="text-xs text-gray-400">score</p>
+                        </div>
+                    </div>
+                    <p class="text-4xl font-black mb-1" id="finalFrac"></p>
+                    <p class="text-gray-400 text-sm mb-8">questions correct</p>
+                    <!-- Emotion summary -->
+                    <div id="emoSummary" class="glass rounded-2xl p-5 mb-8 text-left hidden">
+                        <p class="text-xs uppercase tracking-widest text-gray-500 mb-3">Emotions During Quiz</p>
+                        <div id="emoBars" class="space-y-2"></div>
+                    </div>
+                    <div class="flex justify-center gap-4">
+                        <button onclick="switchMode('course')"
+                            class="px-6 py-3 glass rounded-xl font-semibold hover:bg-white/10 transition">
+                            ← Back to Course
+                        </button>
+                        <button onclick="retryQuiz()"
+                            class="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl font-bold transition shadow-lg">
+                            Retry Quiz
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            {% else %}
+            <div class="glass rounded-3xl p-16 text-center border border-white/10">
+                <div class="text-7xl mb-5">📭</div>
+                <h3 class="text-2xl font-bold mb-2">No Quiz Questions Yet</h3>
+                <p class="text-gray-400">The admin hasn't added quiz questions for this course yet.</p>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+    <!-- ══ RIGHT: Emotion Tracker (persistent, always visible) ══ -->
+    <div>
+        <div class="glass rounded-3xl overflow-hidden border border-white/10 sticky top-24">
+
+            <!-- Mode label -->
+            <div class="px-5 pt-5 pb-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse"></span>
+                    <p class="text-sm font-bold tracking-wide">Emotion Tracker</p>
+                </div>
+                <span id="trackingModeLabel"
+                      class="text-[10px] px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded-full font-semibold border border-purple-500/20">
+                    COURSE
+                </span>
+            </div>
+
+            <!-- Webcam -->
+            <div class="relative aspect-video bg-black webcam-wrap mx-4 rounded-2xl overflow-hidden mb-4">
+                <video id="camVideo" class="w-full h-full object-cover" autoplay muted playsinline></video>
+                <div class="absolute inset-0"
+                     style="background:linear-gradient(to top,rgba(0,0,0,0.65) 0%,transparent 55%)"></div>
+                <div id="camStatus"
+                     class="absolute bottom-3 left-3 right-3 text-[10px] text-center text-gray-300 bg-black/50 backdrop-blur rounded-lg py-1 px-2">
+                    Initializing…
+                </div>
+            </div>
+
+            <!-- Live stats -->
+            <div class="px-4 pb-4 space-y-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="p-3 bg-white/5 rounded-xl text-center">
+                        <p class="text-[10px] text-gray-500 mb-1">Emotion</p>
+                        <p id="emoLabel" class="text-sm font-black text-purple-300 uppercase">--</p>
+                    </div>
+                    <div class="p-3 bg-white/5 rounded-xl text-center">
+                        <p class="text-[10px] text-gray-500 mb-1">Confidence</p>
+                        <p id="emoConf" class="text-sm font-black text-blue-300">0%</p>
+                    </div>
+                </div>
+
+                <!-- Context-aware message -->
+                <div class="p-3 bg-white/5 rounded-xl border border-white/5">
+                    <p class="text-[10px] text-gray-500 text-center" id="contextMsg">
+                        Tracking your engagement while watching.
+                    </p>
+                </div>
+
+                <!-- Emotion chip history (quiz mode only) -->
+                <div id="chipWrap" class="hidden">
+                    <p class="text-[10px] text-gray-600 uppercase tracking-widest mb-1.5">Answer emotions</p>
+                    <div id="chipArea" class="flex flex-wrap gap-1 min-h-[20px]"></div>
+                </div>
+
+                <!-- Toggle pause -->
+                <button id="pauseBtn"
+                    class="w-full py-2.5 bg-white/8 hover:bg-white/15 border border-white/10 rounded-xl text-xs font-semibold transition">
+                    ⏸ Pause Tracking
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Scripts ─────────────────────────────────────────────── -->
+<script src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"
+    onerror="document.getElementById('camStatus').innerText='Face-API failed to load.'"></script>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// MODE TOGGLE
+// ═══════════════════════════════════════════════════════
+let currentMode = 'course';
+
+function switchMode(mode) {
+    currentMode = mode;
+    const isCourse = mode === 'course';
+
+    // Panel visibility
+    document.getElementById('coursePanel').classList.toggle('hidden', !isCourse);
+    document.getElementById('quizPanel').classList.toggle('hidden',  isCourse);
+
+    // Toggle buttons
+    document.getElementById('btnCourse').classList.toggle('active', isCourse);
+    document.getElementById('btnQuiz').classList.toggle('active',  !isCourse);
+
+    // Pill slider position
+    const slider  = document.getElementById('pillSlider');
+    const btnC    = document.getElementById('btnCourse');
+    const btnQ    = document.getElementById('btnQuiz');
+    slider.style.left  = isCourse ? btnC.offsetLeft + 'px' : btnQ.offsetLeft + 'px';
+    slider.style.width = isCourse ? btnC.offsetWidth + 'px' : btnQ.offsetWidth + 'px';
+
+    // Tracker label + context message + chips
+    document.getElementById('trackingModeLabel').innerText = isCourse ? 'COURSE' : 'QUIZ';
+    document.getElementById('contextMsg').innerText = isCourse
+        ? 'Tracking your engagement while watching.'
+        : 'Emotion captured on each answer submission.';
+    document.getElementById('chipWrap').classList.toggle('hidden', isCourse);
+
+    // Re-animate the visible panel
+    const panel = document.getElementById(isCourse ? 'coursePanel' : 'quizPanel');
+    panel.style.animation = 'none';
+    void panel.offsetWidth;
+    panel.style.animation = 'fadeUp 0.4s cubic-bezier(.22,.68,0,1.2) both';
+}
+
+// Init slider position on load
+window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => switchMode('course'), 50);   // let layout settle
+});
+
+// ═══════════════════════════════════════════════════════
+// QUIZ STATE
+// ═══════════════════════════════════════════════════════
+const COURSE_ID_VAL = "{{ course.id }}";
+const QUESTIONS     = {{ questions | tojson | safe }};
+const totalQ        = QUESTIONS.length;
+let qIndex          = 0;
+let correct         = 0;
+let qAnswered       = false;
+const emoLog        = [];
+
+const CHIP_COLORS = {
+    happy:'bg-green-500/20 text-green-300', surprised:'bg-yellow-500/20 text-yellow-300',
+    neutral:'bg-blue-500/20 text-blue-300', sad:'bg-purple-500/20 text-purple-300',
+    angry:'bg-red-500/20 text-red-300',     fearful:'bg-pink-500/20 text-pink-300',
+    disgusted:'bg-orange-500/20 text-orange-300'
+};
+const EMO_BAR_COLORS = {
+    happy:'bg-green-400', surprised:'bg-yellow-400', neutral:'bg-blue-400',
+    sad:'bg-purple-400',  angry:'bg-red-400',        fearful:'bg-pink-400',
+    disgusted:'bg-orange-400'
+};
+
+function renderQ(idx) {
+    if (idx >= totalQ) { showFinal(); return; }
+    qAnswered = false;
+    const q   = QUESTIONS[idx];
+    const pct = Math.round((idx / totalQ) * 100);
+
+    document.getElementById('qIndex').innerText = idx + 1;
+    document.getElementById('qNum').innerText   = idx + 1;
+    document.getElementById('qSubj').innerText  = q.subject || '';
+    document.getElementById('qText').innerText  = q.question;
+    document.getElementById('qBar').style.width = pct + '%';
+    document.getElementById('qPct').innerText   = pct + '%';
+
+    const fb = document.getElementById('qFeedback');
+    fb.style.opacity  = '0';
+    fb.className      = 'mt-6 min-h-[44px] flex items-center justify-center rounded-2xl px-6 py-3 text-base font-semibold opacity-0 transition-all duration-300';
+
+    const opts = [
+        { l:'A', t: q.option_a },
+        { l:'B', t: q.option_b },
+        { l:'C', t: q.option_c },
+        { l:'D', t: q.option_d }
+    ];
+    document.getElementById('optsWrap').innerHTML = opts.map(o => `
+        <button class="opt-btn quiz-opt w-full flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/10 text-left"
+                data-opt="${o.l}" onclick="pick('${o.l}')">
+            <span class="lbadge w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl bg-white/10 font-bold text-sm text-purple-300">${o.l}</span>
+            <span class="text-sm leading-relaxed">${o.t}</span>
+        </button>
+    `).join('');
+
+    // Animate card
+    const card = document.getElementById('qCard');
+    card.style.animation = 'none'; void card.offsetWidth;
+    card.style.animation = 'fadeSlideIn 0.4s cubic-bezier(.22,.68,0,1.2) both';
+}
+
+function pick(letter) {
+    if (qAnswered) return;
+    qAnswered = true;
+
+    const q      = QUESTIONS[qIndex];
+    const isLast = qIndex === totalQ - 1;
+    const emo    = captureEmo();
+    emoLog.push(emo);
+    addChip(emo.emotion);
+
+    // Visual feedback on buttons
+    document.querySelectorAll('.quiz-opt').forEach(btn => {
+        btn.disabled = true;
+        const opt = btn.dataset.opt;
+        if (opt === q.correct_answer)      btn.classList.add('correct');
+        else if (opt === letter && letter !== q.correct_answer) btn.classList.add('wrong');
+        else btn.style.opacity = '0.3';
+    });
+
+    // Submit to server
+    submitQ(q.id, letter, q.correct_answer, isLast, emo);
+}
+
+async function submitQ(qId, selected, correctAns, isLast, emo) {
+    const isCorrect = (selected === correctAns);
+    if (isCorrect) {
+        correct++;
+        document.getElementById('qScore').innerText = correct;
+    }
+
+    // Show inline feedback
+    const fb = document.getElementById('qFeedback');
+    if (isCorrect) {
+        fb.className = 'mt-6 min-h-[44px] flex items-center justify-center rounded-2xl px-6 py-3 text-base font-semibold transition-all duration-300 bg-green-500/15 border border-green-500/30 text-green-300';
+        fb.innerHTML = '✅ &nbsp; Correct!';
+    } else {
+        fb.className = 'mt-6 min-h-[44px] flex items-center justify-center rounded-2xl px-6 py-3 text-base font-semibold transition-all duration-300 bg-red-500/15 border border-red-500/30 text-red-300';
+        fb.innerHTML = `❌ &nbsp; Wrong — correct answer is <strong class="ml-1">${correctAns}</strong>`;
+    }
+    fb.style.opacity = '1';
+
+    // Log to server (fire-and-forget)
+    fetch('/api/submit_quiz_answer', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+            question_id: qId, course_id: COURSE_ID_VAL,
+            selected_answer: selected, emotion: emo.emotion, confidence_score: emo.score
+        })
+    }).catch(e => console.error('Log error:', e));
+
+    setTimeout(() => {
+        qIndex++;
+        if (qIndex >= totalQ) showFinal();
+        else renderQ(qIndex);
+    }, 1900);
+}
+
+function showFinal() {
+    document.getElementById('questionWrap').classList.add('hidden');
+    document.getElementById('finalWrap').classList.remove('hidden');
+
+    const pct   = totalQ > 0 ? Math.round((correct / totalQ) * 100) : 0;
+    const emoji = pct >= 80 ? '🏆' : pct >= 50 ? '🎉' : '💪';
+
+    document.getElementById('finalEmoji').innerText = emoji;
+    document.getElementById('finalPct').innerText   = pct + '%';
+    document.getElementById('finalFrac').innerText  = `${correct} / ${totalQ}`;
+    document.getElementById('qBar').style.width     = '100%';
+    document.getElementById('qPct').innerText       = '100%';
+
+    // Animate ring
+    setTimeout(() => {
+        document.getElementById('ring').style.strokeDashoffset = 251.2 * (1 - pct / 100);
+    }, 200);
+
+    // Emotion summary
+    if (emoLog.length) {
+        const counts = {};
+        emoLog.forEach(e => { counts[e.emotion] = (counts[e.emotion]||0)+1; });
+        const maxC = Math.max(...Object.values(counts));
+        document.getElementById('emoBars').innerHTML = Object.entries(counts)
+            .sort((a,b)=>b[1]-a[1])
+            .map(([e,c]) => `
+                <div class="flex items-center gap-3">
+                    <span class="w-20 text-xs text-gray-400 capitalize flex-shrink-0">${e}</span>
+                    <div class="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full ${EMO_BAR_COLORS[e]||'bg-gray-400'} transition-all duration-700"
+                             style="width:${Math.round(c/maxC*100)}%"></div>
+                    </div>
+                    <span class="text-xs text-gray-500 w-4 text-right">${c}</span>
+                </div>
+            `).join('');
+        document.getElementById('emoSummary').classList.remove('hidden');
+    }
+}
+
+function retryQuiz() {
+    qIndex = 0; correct = 0; qAnswered = false; emoLog.length = 0;
+    document.getElementById('finalWrap').classList.add('hidden');
+    document.getElementById('questionWrap').classList.remove('hidden');
+    document.getElementById('qScore').innerText = '0';
+    document.getElementById('chipArea').innerHTML = '';
+    renderQ(0);
+}
+
+function addChip(emo) {
+    const chip = document.createElement('span');
+    chip.className = `text-[10px] px-2 py-0.5 rounded-full font-semibold ${CHIP_COLORS[emo]||'bg-white/10 text-gray-300'}`;
+    chip.innerText = emo;
+    document.getElementById('chipArea').appendChild(chip);
+}
+
+// ═══════════════════════════════════════════════════════
+// EMOTION TRACKING  (both modes)
+// ═══════════════════════════════════════════════════════
+const MODEL_URL  = 'https://justadudewhohacks.github.io/face-api.js/models';
+let modelsLoaded = false;
+let isTracking   = true;
+let lastEmo      = 'neutral';
+let lastEmoScore = 0;
+
+const camEl     = document.getElementById('camVideo');
+const statusEl  = document.getElementById('camStatus');
+const emoLblEl  = document.getElementById('emoLabel');
+const emoConfEl = document.getElementById('emoConf');
+
+function captureEmo() { return { emotion: lastEmo, score: lastEmoScore }; }
+
+async function initTracking() {
+    let tries = 0;
+    while (typeof faceapi === 'undefined' && tries < 15) {
+        await new Promise(r => setTimeout(r, 200)); tries++;
+    }
+    if (typeof faceapi === 'undefined') { statusEl.innerText = 'Face-API unavailable'; return; }
+    try {
+        statusEl.innerText = 'Loading AI models…';
+        await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+        modelsLoaded      = true;
+        statusEl.innerText = 'Starting camera…';
+        startCam();
+    } catch(e) {
+        statusEl.innerText = 'Model error'; startCam();
+    }
+}
+
+function startCam() {
+    navigator.mediaDevices.getUserMedia({ video:{} })
+        .then(stream => {
+            camEl.srcObject  = stream;
+            statusEl.innerText = 'Live';
+            camEl.addEventListener('play', detectLoop);
+        })
+        .catch(() => { statusEl.innerText = 'Camera denied'; });
+}
+
+async function detectLoop() {
+    if (!isTracking || !modelsLoaded) { if(isTracking) requestAnimationFrame(detectLoop); return; }
+    const det = await faceapi
+        .detectSingleFace(camEl, new faceapi.TinyFaceDetectorOptions())
+        .withFaceExpressions();
+    if (det) {
+        const expr  = det.expressions;
+        const best  = Object.keys(expr).reduce((a,b) => expr[a]>expr[b]?a:b);
+        lastEmo = best; lastEmoScore = expr[best];
+        const p = Math.round(lastEmoScore*100)+'%';
+        emoLblEl.innerText  = best;
+        emoConfEl.innerText = p;
+
+        // Log to backend periodically during Course mode
+        if (currentMode === 'course' && Math.random() > 0.7) {
+            fetch('/api/log_emotion', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    course_id: COURSE_ID_VAL,
+                    emotion:   best, score: lastEmoScore, timestamp: 0
+                })
+            }).catch(()=>{});
+        }
+    }
+    if (isTracking) requestAnimationFrame(detectLoop);
+}
+
+// Pause button
+document.getElementById('pauseBtn').addEventListener('click', () => {
+    isTracking = !isTracking;
+    const btn  = document.getElementById('pauseBtn');
+    statusEl.innerText = isTracking ? 'Live' : 'Paused';
+    btn.innerText      = isTracking ? '⏸ Pause Tracking' : '▶ Resume Tracking';
+    if (isTracking) detectLoop();
+});
+
+initTracking();
+</script>
+{% endblock %}
